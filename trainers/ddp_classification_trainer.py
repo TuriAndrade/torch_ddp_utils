@@ -76,9 +76,6 @@ class DDPClassificationTrainer:
             "loss/val": "min",
         }
 
-        # self.mp_manager = mp.Manager()
-        # self.best_models = self.mp_manager.dict()
-
         os.makedirs(self.save_path, exist_ok=True)
 
     def ddp_setup(self, rank, world_size):
@@ -100,11 +97,15 @@ class DDPClassificationTrainer:
     def init_models(self):
         self.init_model = self.model(**self.model_config)
 
-    def launch_ddp_models(self, device):
+    def launch_models(self, device, world_size):
         model = self.model(**self.model_config).to(device)
         model.load_state_dict(self.init_model.state_dict())
 
-        return DDP(model, device_ids=[device])
+        if world_size > 1:
+            return DDP(model, device_ids=[device])
+
+        else:
+            return model
 
     def train_ddp(self, rank, world_size):
         self.ddp_setup(rank, world_size)
@@ -170,9 +171,9 @@ class DDPClassificationTrainer:
             data_frac=self.val_data_frac,
         )
 
-        model = self.launch_ddp_models(rank)
+        model = self.launch_models(rank, world_size)
         optimizer, _, scheduler, wd_scheduler = adamw_cosine_warmup_wd(
-            model=model,
+            models=model,
             iterations_per_epoch=len(train_loader),
             start_lr=self.start_lr,
             ref_lr=self.ref_lr,
@@ -256,7 +257,10 @@ class DDPClassificationTrainer:
                         data_batch = data_batch.to(rank)
                         label_batch = label_batch.to(rank)
 
+                        # 1. Fwd pass
                         model_out = model(data_batch)
+
+                        # 2. Compute loss
                         loss = criterion(model_out, label_batch)
 
                         self.report_generator.add_epoch_metric(
