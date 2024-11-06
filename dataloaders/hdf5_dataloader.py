@@ -21,22 +21,33 @@ class HDF5Dataset(Dataset):
         data_dataset="data",
         labels_dataset="labels",
         data_dtype=torch.float32,
-        label_dtype=torch.long,
+        labels_dtype=torch.long,
         data_transform=None,
-        label_transform=None,
+        labels_transform=None,
     ):
         self.hdf5_file = hdf5_file
         self.group = group
         self.data_dataset = data_dataset
         self.labels_dataset = labels_dataset
         self.data_dtype = data_dtype
-        self.label_dtype = label_dtype
+        self.labels_dtype = labels_dtype
         self.data_transform = data_transform
-        self.label_transform = label_transform
+        self.labels_transform = labels_transform
 
-        self.hdf = None  # Placeholder for opening the file
+        if self.data_transform is not None:
+            if not isinstance(self.data_transform, (list, tuple)):
+                self.data_transform = [self.data_transform]
 
-    def __enter__(self):
+        else:
+            self.data_transform = []
+
+        if self.labels_transform is not None:
+            if not isinstance(self.labels_transform, (list, tuple)):
+                self.labels_transform = [self.labels_transform]
+
+        else:
+            self.labels_transform = []
+
         self.hdf = h5py.File(self.hdf5_file, "r", swmr=True)
         self.data = self.hdf[os.path.join(self.group, self.data_dataset)]
         self.labels = (
@@ -44,42 +55,41 @@ class HDF5Dataset(Dataset):
             if self.labels_dataset is not None
             else None
         )
-        return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.hdf is not None:
-            self.hdf.close()
+    def get_collate_fn(self):
+        def _collate_fn_w_labels(batch):
+            data, labels = zip(*batch)
+            data = torch.tensor(np.array(data), dtype=self.data_dtype)
+            labels = torch.tensor(np.array(labels), dtype=self.labels_dtype)
+
+            for f in self.data_transform:
+                data = f(data)
+
+            for f in self.labels_transform:
+                labels = f(labels)
+
+            return data, labels
+
+        def _collate_fn(batch):
+            data = torch.tensor(np.array(batch), dtype=self.data_dtype)
+
+            for f in self.data_transform:
+                data = f(data)
+
+            return data
+
+        return _collate_fn if self.labels_dataset is None else _collate_fn_w_labels
 
     def __len__(self):
         with h5py.File(self.hdf5_file, "r") as f:
             return len(f[os.path.join(self.group, self.data_dataset)])
 
     def __getitem__(self, idx):
-        if self.hdf is None:
-            self.hdf = h5py.File(self.hdf5_file, "r", swmr=True)
-            self.data = self.hdf[os.path.join(self.group, self.data_dataset)]
-            self.labels = (
-                self.hdf[os.path.join(self.group, self.labels_dataset)]
-                if self.labels_dataset is not None
-                else None
-            )
-
         data = self.data[idx]
-        label = self.labels[idx] if self.labels is not None else None
-
-        # Apply transformations if provided
-        if self.data_transform:
-            data = self.data_transform(torch.tensor(data, dtype=self.data_dtype))
-        else:
-            data = torch.tensor(data, dtype=self.data_dtype)
 
         if self.labels is not None:
-            if self.label_transform:
-                label = self.label_transform(
-                    torch.tensor(label, dtype=self.label_dtype)
-                )
-            else:
-                label = torch.tensor(label, dtype=self.label_dtype)
+            label = self.labels[idx]
+
             return data, label
         else:
             return data
@@ -101,6 +111,7 @@ class HDF5Dataset(Dataset):
         dataset = HDF5Dataset(
             **dataset_config,
         )
+        custom_collate = dataset.get_collate_fn()
 
         if data_frac < 1:
             dataset_len = len(dataset)
@@ -148,6 +159,7 @@ class HDF5Dataset(Dataset):
             num_workers=num_workers,
             drop_last=drop_last,
             pin_memory=pin_memory,
+            collate_fn=custom_collate,
         )
 
         return loader
