@@ -16,6 +16,8 @@ class DDPClassificationTrainer:
         self,
         model,
         model_config,
+        batch_collator,
+        batch_collator_config,
         model_name,
         hdf5_dataset_train_config,
         train_data_frac,
@@ -42,6 +44,8 @@ class DDPClassificationTrainer:
     ):
         self.model = model
         self.model_config = model_config
+        self.batch_collator = batch_collator
+        self.batch_collator_config = batch_collator_config
         self.model_name = model_name
         self.hdf5_dataset_train_config = hdf5_dataset_train_config
         self.train_data_frac = train_data_frac
@@ -158,6 +162,11 @@ class DDPClassificationTrainer:
             shuffle=True,
             seed=self.seed,
             data_frac=self.train_data_frac,
+            collate_fn=(
+                self.batch_collator(**self.batch_collator_config)
+                if self.batch_collator
+                else None
+            ),
         )
 
         val_loader = HDF5Dataset.get_dataloader(
@@ -169,6 +178,11 @@ class DDPClassificationTrainer:
             shuffle=True,
             seed=self.seed,
             data_frac=self.val_data_frac,
+            collate_fn=(
+                self.batch_collator(**self.batch_collator_config)
+                if self.batch_collator
+                else None
+            ),
         )
 
         model = self.launch_models(rank, world_size)
