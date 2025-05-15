@@ -102,14 +102,12 @@ class DDPClassificationTrainer:
         self.init_model = self.model(**self.model_config)
 
     def launch_models(self, device, world_size):
-        model = self.model(**self.model_config).to(device)
-        model.load_state_dict(self.init_model.state_dict())
+        model = self.init_model.to(device)
 
         if world_size > 1:
-            return DDP(model, device_ids=[device])
+            model = DDP(model, device_ids=[device])
 
-        else:
-            return model
+        return model
 
     def train_ddp(self, rank, world_size):
         self.ddp_setup(rank, world_size)
