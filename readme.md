@@ -28,3 +28,17 @@ This repo provides small, composable helpers you can drop into existing projects
 git clone https://github.com/TuriAndrade/torch_ddp_utils.git
 cd torch_ddp_utils
 pip install -r requirements.txt
+```
+
+
+## Project structure
+
+```bash
+torch_ddp_utils/
+├─ batch_collators/ # batch assembly helpers
+├─ dataloaders/ # data loading utilities for DDP
+├─ evaluation/ # evaluation/metrics helpers
+├─ optimizers/ # optimizer-related helpers
+├─ report/ # simple report/export helpers
+└─ trainers/ # reusable training routines
+```
